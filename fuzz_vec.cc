@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <stdint.h>
 extern "C" {
 #include "vector/vector.h"
@@ -8,7 +9,6 @@ extern "C" {
 typedef struct MyStruct
 {
     int integer;
-    const char * mychar;
     __uint8_t myuint;
     /* data */
 } MyStruct;
@@ -20,19 +20,10 @@ Vector generate_vector(size_t size){
     for(size_t i = 0; i < size; ++i){
         MyStruct * s = (MyStruct*)malloc(sizeof(MyStruct));
         s->integer = 12;
-        s->mychar = "123";
         s->myuint = 210;
         vector_push_back(&v, &s);
     }
     return v;
-}
-
-MyStruct generate_struct(int integer, const char * mychar, __uint8_t myuint){
-    MyStruct * s =  (MyStruct*)malloc(sizeof(MyStruct));
-    s->integer = integer;
-    s->mychar = mychar;
-    s->myuint = myuint;
-    return *s;
 }
 
 int int_vector_test(size_t siz){
@@ -58,7 +49,6 @@ int int_vector_test(size_t siz){
     for(int i = 0; i < siz; ++i){
         MyStruct * s = (MyStruct*)malloc(sizeof(MyStruct));
         s->integer = 12;
-        s->mychar = "123";
         s->myuint = 210;
         vector_push_back(&v2, s);
     }
@@ -66,7 +56,7 @@ int int_vector_test(size_t siz){
     Iterator end = vector_end(&v2);
     for(;!iterator_equals(&it, &end);iterator_increment(&it)){
         MyStruct * y = (MyStruct*)iterator_get(&it);
-        printf("(%d, %s, %d)", y->integer, y->mychar, y->myuint);
+        printf("(%d, %d)", y->integer, y->myuint);
         y = NULL;
     }
     vector_destroy(&v2);
@@ -84,6 +74,7 @@ bool vector_pushpopback_MyStruct_test(Vector * my_struct_vec, MyStruct * my_stru
     vector_pop_back(my_struct_vec);
     MyStruct back2 = *(MyStruct*)vector_back(my_struct_vec);
     int res2 = back2.integer;
+    assert(res1 == res2);
     return (res1 == res2);
 }
 
@@ -108,6 +99,7 @@ bool iterator_next_test(Iterator * it){
     iterator_decrement(it);
     s = ITERATOR_GET_AS(MyStruct, it);
     int sz2 = s.integer;
+    assert(sz == sz2);
     return sz == sz2;
 }
 
@@ -140,6 +132,8 @@ bool vector_isempty_test(MyStruct * value){
    bool b1 = vector_is_empty(&v);
    vector_push_back(&v, value);
    bool b2 = vector_is_empty(&v);
+   vector_destroy(&v);
+   assert(b1 && !b2);
    return b1 && !b2;
 }
 
@@ -150,9 +144,8 @@ bool vector_erase_test(Vector * v, size_t index, MyStruct * s){
     return (v->size == size - 1);
 }
 
-MyStruct parse_mystruct(__uint8_t *data,size_t siz, size_t string_size){
+MyStruct * parse_mystruct(__uint8_t *data,size_t siz){
    int integer = 0;
-   char * string = (char *)malloc(sizeof(char) * 11);
    int i = 0;
    __uint8_t myuint = 0;
    for(; i <= siz && i < 4; ++i){
@@ -161,27 +154,78 @@ MyStruct parse_mystruct(__uint8_t *data,size_t siz, size_t string_size){
          integer += data[i];
        }
    }
-   for(; i <= siz && i < string_size; ++i){
-       string[i] = data[i];
-   }
    if(i <= siz)
       myuint = data[i];
    data = data + i;
-   MyStruct res = generate_struct(integer, string, myuint);
+   MyStruct * res = (MyStruct *)malloc(sizeof(MyStruct));
    return res;
 }
-
+/**
 extern "C" int LLVMFuzzerTestOneInput(__uint8_t *data, size_t Size) {
   int siz = data[0];
   Vector v;
   vector_setup(&v, siz, sizeof(MyStruct));
   for(int i = 0; i < siz; ++i){
     MyStruct s = parse_mystruct(data, Size, 10);
-    vector_push_back(&v, NULL);
+    vector_push_back(&v, &s);
   }
-  MyStruct s = parse_mystruct(data, Size, 10);
+  // MyStruct s = parse_mystruct(data, Size, 10);
   //vector_pushpopback_MyStruct_test(&v, &s);
+  for(int i = 0; i < siz; ++i){
+      MyStruct * f = (MyStruct *)vector_get(&v, i);
+      mystruct_destroy(f);
+  }
+  vector_destroy(&v);
+
+  return 0;
+}
+*/
+
+bool vector_pushpopback_int_test(Vector * my_int_vec, int x){
+    int res1 = *(int*)vector_back(my_int_vec);
+    vector_push_back(my_int_vec, &x);
+    vector_pop_back(my_int_vec);
+    int res2 = *(int*)vector_back(my_int_vec);
+    assert(res1 == res2);
+    return (res1 == res2);
+}
+
+bool vector_pushpopfront_int_test(Vector * my_int_vec, int x){
+    int res1 = *(int*)vector_front(my_int_vec);
+    vector_push_front(my_int_vec, &x);
+    vector_pop_front(my_int_vec);
+    int res2 = *(int*)vector_front(my_int_vec);
+    assert(res1 == res2);
+    return (res1 == res2);
+}
+
+
+
+extern "C" int LLVMFuzzerTestOneInput(__uint8_t *data, size_t Size) {
+  size_t siz = data[0] + 1;
+  Vector v;
+  vector_setup(&v, siz, sizeof(MyStruct));
+  MyStruct * s;
+  for(int i = 0; i < siz; ++i){
+    s = parse_mystruct(data, Size);
+    vector_push_back(&v, &s);
+    free(s);
+  }
+  s = parse_mystruct(data, Size);
   
+  //This is where test suites are running
+  vector_pushpopback_MyStruct_test(&v, s);
+  vector_pushpopfront_MyStruct_test(&v, s);
+  vector_isempty_test(s);
+  //
+  
+  for(int i = 0; i < siz; ++i){
+      MyStruct * get = (MyStruct *)vector_get(&v, i);
+  }
+  vector_destroy(&v);
+  free(s);
+  s = NULL;
+
   return 0;
 }
 
